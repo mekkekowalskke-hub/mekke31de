@@ -1,0 +1,261 @@
+PROGRAM MAIN
+	
+	USE M_CPU
+	
+	IMPLICIT NONE
+	
+	INTEGER, PARAMETER :: SD = 3, OD = 2
+	INTEGER, PARAMETER :: NUMEL = 10**3
+	INTEGER, PARAMETER :: NUMIP = 4
+	
+	INTEGER, PARAMETER :: NUMDR = 4
+	INTEGER, PARAMETER :: HFKS = 1
+	INTEGER, PARAMETER :: NUMKP = 1
+	INTEGER, PARAMETER :: NEN = (3+1)**3
+	
+	INTEGER, PARAMETER :: LDGG = 2
+	INTEGER, PARAMETER :: LAGRANGE = 0
+	INTEGER, PARAMETER :: N = 1
+	
+	INTEGER :: NUMEIG(HFKS)
+	
+	INTEGER :: D1,D2,D3
+	INTEGER :: D123
+	INTEGER :: IB
+	
+	INTEGER :: MOP
+	
+	INTEGER :: DIM_CP(SD),DIM_KP(SD),DIM_OP(SD)
+	
+	INTEGER :: SPAN(NUMEL,SD)
+	
+	DOUBLE PRECISION :: NUM(HFKS)
+	DOUBLE PRECISION :: NUM0(HFKS)
+	DOUBLE PRECISION :: KWEI(NUMKP)
+	DOUBLE PRECISION :: JAC(SD)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: IW(:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: RHO_S(:,:,:,:,:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: RHO(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: OCC(:,:)
+	DOUBLE COMPLEX,   ALLOCATABLE :: PSI(:,:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: X(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: DPHI_G(:,:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: DERIV(:)
+	DOUBLE PRECISION, ALLOCATABLE :: CWEI(:,:,:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: TEMP(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: WP(:,:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: BSS_BASIS(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: BAK_KNOT0(:)
+	DOUBLE PRECISION, ALLOCATABLE :: BAK_KNOT(:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: BSS_A(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: BSS_NDU(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: LEFT(:,:),RIGHT(:,:)
+	
+	DOUBLE PRECISION, ALLOCATABLE :: CHECK(:,:)
+	DOUBLE PRECISION, ALLOCATABLE :: THECK(:,:)
+	DOUBLE COMPLEX,   ALLOCATABLE :: PHECK(:,:,:)
+	
+	INTEGER :: IND
+	INTEGER :: I,J,K
+	INTEGER :: K1,K2,K3
+	
+	D1 = NUMIP
+	D2 = MAX(1,NUMIP*(OD-1))
+	D3 = MAX(1,NUMIP*(SD-OD))
+	
+	D123 = D1*D2*D3
+	
+	DIM_CP(1) = 10; DIM_CP(2) = 10; DIM_CP(3) = 10;
+	DIM_KP(1) = 14; DIM_KP(2) = 14; DIM_KP(3) = 14;
+	DIM_OP(1) = 3;  DIM_OP(2) = 3;  DIM_OP(3) = 3;
+	
+	MOP = MAXVAL(DIM_OP)
+	
+	NUMEIG(1) = 1*256 - 1
+	KWEI(1) = 2.0D0
+	
+	ALLOCATE(CHECK(NUMEL*D1*D2*D3*NEN,0:SD))
+	ALLOCATE(THECK(NUMEL*D1*D2*D3*SD,SD))
+	ALLOCATE(PHECK(NUMEL*D1*D2*D3*SUM(NUMEIG),NUMKP,0:SD))
+	
+	ALLOCATE(IW(D1))
+	
+	ALLOCATE(OCC(SUM(NUMEIG),NUMKP))
+	ALLOCATE(PSI(NEN,SUM(NUMEIG),NUMKP))
+	ALLOCATE(RHO_S(NUMEL,D1,D2,D3,NUMDR))
+	ALLOCATE(RHO(NUMDR,D1*D2*D3))
+	ALLOCATE(X(NEN,SD))
+	ALLOCATE(DPHI_G(NUMEL*D1*D2*D3*NEN,0:SD))
+	
+	ALLOCATE(DERIV(NUMEL*SD))
+	ALLOCATE(CWEI(0:DIM_CP(1),0:DIM_CP(2),0:DIM_CP(3)))
+	
+	ALLOCATE(TEMP(NUMEL,0:SD))
+	ALLOCATE(WP(NUMEL,0:SD))
+	
+	ALLOCATE(BSS_BASIS(NUMEL*D1*D2*D3,2*(DIM_OP(1)+1)+2*(DIM_OP(2)+1)+2*(DIM_OP(3)+1)))
+	ALLOCATE(BAK_KNOT0(NUMEL*D1*D2*D3*SD))
+	ALLOCATE(BAK_KNOT((DIM_KP(1)+1)+(DIM_KP(2)+1)+(DIM_KP(3)+1)))
+	
+	ALLOCATE(BSS_A(NUMEL*D1*D2*D3,2*(MOP+1)))
+	ALLOCATE(BSS_NDU(NUMEL*D1*D2*D3,(MOP+1)*(MOP+1)))
+	ALLOCATE(LEFT(NUMEL*D123,MOP),RIGHT(NUMEL*D123,MOP))
+	
+	! ====================================================================================================
+	! ====================================================================================================
+	! VARIABLE DECLERATIONS AND APPENDANCE
+	! ====================================================================================================
+	! ====================================================================================================
+	
+	DO I = 1,NUMEL
+	  IF ( MOD(I,4) .EQ. 1 ) THEN
+	    SPAN(I,:) = (/ 10,5,10 /)
+	  ELSE IF ( MOD(I,4) .EQ. 2 ) THEN
+	    SPAN(I,:) = (/ 4,5,7 /)
+	  ELSE IF ( MOD(I,4) .EQ. 3 ) THEN
+	    SPAN(I,:) = (/ 1,5,3 /)
+	  ELSE IF ( MOD(I,4) .EQ. 0 ) THEN
+	    SPAN(I,:) = (/ 8,5,2 /)
+	  END IF
+	END DO
+	
+	DO I = 0,DIM_CP(1)
+	  DO J = 0,DIM_CP(2)
+	    DO K = 0,DIM_CP(3)
+	      CWEI(I,J,K) = DBLE(I)*0.001D0 + DBLE(J)*0.01D0 + DBLE(K)*0.001D0
+	    END DO
+	  END DO
+	END DO
+	
+	DO I = 1,NUMEL*D1*D2*D3*SD
+	  BAK_KNOT0(I) = DBLE(MOD(I,D1*D2*D3))/DBLE(NUMEL)
+	END DO
+	
+	DO I = 1,((DIM_KP(1)+1)+(DIM_KP(2)+1)+(DIM_KP(3)+1))
+	  BAK_KNOT(I) = DBLE(I)/DBLE(DIM_KP(1)+1)
+	END DO
+	
+	DO I = 1, NEN
+	  DO J = 1, SUM(NUMEIG)
+	    DO K = 1, NUMKP
+	      PSI(I,J,K) = CMPLX(J/SUM(NUMEIG),K/NUMKP)
+	    END DO
+	  END DO 
+	END DO
+	
+	DO I = 1,SUM(NUMEIG)
+	  OCC(I,1) = DBLE(I/SUM(NUMEIG))
+	END DO
+	
+	DO I = 1, NEN
+	  DO J = 1, SD
+	    X(I,J) = 0.001D0*DBLE(J)/DBLE(I)
+	  END DO
+	END DO
+	
+	IW(1) = 1.0D0; IW(2) = 2.0D0; IW(3) = 3.0D0; IW(4) = 4.0D0;
+	JAC(1) = 1.0D0; JAC(2) = 2.0D0; JAC(3) = 3.0D0; 
+	NUM(:) = 0.0D0
+	
+	! ====================================================================================================
+	! ====================================================================================================
+	! ====================================================================================================
+	! ====================================================================================================
+	
+	DO IND = 1,NUMEL
+	  
+	  IF (LAGRANGE .EQ. 0) THEN
+	    IB = 0
+	    DO K1 = 1, D1
+	      DO K2 = 1, D2
+	        DO K3 = 1, D3
+	          IB = IB + 1
+	          CALL DERS_BASIS_FUNS(SD,OD,NUMEL,IND,IB,D123,N,MOP, &
+	                               DIM_KP,SPAN,BAK_KNOT0,DIM_OP,BAK_KNOT,BSS_BASIS, &
+	                               BSS_A,BSS_NDU,LEFT,RIGHT)
+	        END DO
+	      END DO
+	    END DO
+	  END IF
+	  
+	END DO
+	
+	DO IND = 1,NUMEL
+	  
+	  CALL BASIS(SD,OD,D1,D2,D3,DIM_CP,DIM_KP,DIM_OP,NEN,NUMEL,IND,D123, &
+	                SPAN,CWEI, &
+	                DPHI_G,DERIV, &
+	                TEMP,WP,BSS_BASIS)
+	
+	END DO
+	
+	DO IND = 1,NUMEL
+	
+	  CALL INTEGRAL(SD,OD,D1,D2,D3,NUMDR,NUMKP,NUMEL,HFKS,NEN,IND,LDGG, &
+	                NUMEIG, &
+	                IW,JAC,OCC,PSI,KWEI,X,DPHI_G, &
+	                RHO,NUM0,CHECK,THECK,PHECK)
+	  
+	  DO K1 = 1, D1
+	    DO K2 = 1, D2
+	      DO K3 = 1, D3
+	        RHO_S(IND,K1,K2,K3,:) = RHO(:,(K1-1)*D2*D3+(K2-1)*D3+K3)
+	      END DO
+	    END DO
+	  END DO
+	  NUM(:) = NUM(:) + NUM0(:)
+	  
+	END DO
+	
+!	DO IND = 1,NUMEL
+!	  WRITE(*,*) CHECK((IND-1)*NEN+3,1:SD)
+!	END DO
+		
+!	DO IND = 1,NUMEL
+!	  WRITE(*,*) THECK((IND-1)*SD+3,:)
+!	END DO
+			
+!	DO IND = 1,NUMEL
+!	  WRITE(*,*) PHECK((IND-1)*D1*D2*D3*SUM(NUMEIG)+1,1,:)
+!	END DO
+	
+	DO K = 1,D3
+	  WRITE(*,*) "RHO: ", RHO_S(100,D1,D2,K,1:4)
+	END DO
+	WRITE(*,*) " "
+	WRITE(*,*) "NUM: ", NUM
+	
+	DEALLOCATE(LEFT,RIGHT)
+	DEALLOCATE(BSS_NDU)
+	DEALLOCATE(BSS_A)
+	
+	DEALLOCATE(BAK_KNOT,BAK_KNOT0)
+	DEALLOCATE(BSS_BASIS)
+	
+	DEALLOCATE(WP)
+	DEALLOCATE(TEMP)
+	
+	DEALLOCATE(CWEI)
+	DEALLOCATE(DERIV)
+	
+	DEALLOCATE(DPHI_G)
+	DEALLOCATE(X)
+	DEALLOCATE(RHO)
+	DEALLOCATE(RHO_S)
+	DEALLOCATE(PSI)
+	DEALLOCATE(OCC)
+	
+	DEALLOCATE(IW)
+	
+	DEALLOCATE(PHECK)
+	DEALLOCATE(THECK)
+	DEALLOCATE(CHECK)
+	
+END PROGRAM MAIN
