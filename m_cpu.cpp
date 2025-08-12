@@ -1,3 +1,26 @@
+#include <vector>
+#include <complex>
+#include <algorithm>
+#include <cmath>
+
+void GRAD(int SD, int NEN, const double* X,
+          const std::vector<std::vector<double>>& DPHI,
+          std::vector<std::vector<double>>& FX);
+void INV(int SD, const std::vector<std::vector<double>>& F,
+         std::vector<std::vector<double>>& INVF, double& DETF);
+void ADJ(int SD, const std::vector<std::vector<double>>& F,
+         std::vector<std::vector<double>>& ADJF);
+double DET(int SD, const std::vector<std::vector<double>>& F);
+void MAT_TRANS(const std::vector<std::vector<double>>& A, int N, int M,
+               std::vector<std::vector<double>>& AT);
+void MATVEC_PRO(const std::vector<std::vector<double>>& A, int N, int M,
+                const std::vector<double>& B, std::vector<double>& C);
+void BASIS_IN(const int SD, const int OD, const int* DIM_CP, const int* DIM_KP,
+              const int* DIM_OP, const int NEN, const int NUMEL,
+              const int IND, const int IB, const int D123, const int* SPAN,
+              const double* CWEI, double* DPHI_G, double* DERIV,
+              double* TEMP, double* WP, const double* BSS_BASIS);
+
 void INTEGRAL(
     const int SD, const int OD, const int D1, const int D2, const int D3, 
     const int NUMDR, const int NUMKP, const int NUMEL, const int HFKS, const int NEN,
@@ -169,6 +192,87 @@ void INTEGRAL(
 }
 
 
+void GRAD(int SD, int NEN, const double* X,
+          const std::vector<std::vector<double>>& DPHI,
+          std::vector<std::vector<double>>& FX) {
+    for (int j1 = 0; j1 < SD; ++j1) {
+        for (int j2 = 0; j2 < SD; ++j2) {
+            double sum = 0.0;
+            for (int k = 0; k < NEN; ++k) {
+                sum += X[k * SD + j1] * DPHI[k][j2];
+            }
+            FX[j1][j2] = sum;
+        }
+    }
+}
+
+void INV(int SD, const std::vector<std::vector<double>>& F,
+         std::vector<std::vector<double>>& INVF, double& DETF) {
+    std::vector<std::vector<double>> ADJF(SD, std::vector<double>(SD));
+    ADJ(SD, F, ADJF);
+    DETF = DET(SD, F);
+    for (int j1 = 0; j1 < SD; ++j1) {
+        for (int j2 = 0; j2 < SD; ++j2) {
+            INVF[j1][j2] = ADJF[j2][j1] / DETF;
+        }
+    }
+}
+
+void ADJ(int SD, const std::vector<std::vector<double>>& F,
+         std::vector<std::vector<double>>& ADJF) {
+    if (SD == 1) {
+        ADJF[0][0] = 1.0;
+    } else if (SD == 2) {
+        ADJF[0][0] =  F[1][1];
+        ADJF[0][1] = -F[1][0];
+        ADJF[1][0] = -F[0][1];
+        ADJF[1][1] =  F[0][0];
+    } else if (SD == 3) {
+        ADJF[0][0] = F[1][1]*F[2][2]-F[2][1]*F[1][2];
+        ADJF[0][1] = F[2][0]*F[1][2]-F[1][0]*F[2][2];
+        ADJF[0][2] = F[1][0]*F[2][1]-F[2][0]*F[1][1];
+        ADJF[1][0] = F[0][2]*F[2][1]-F[0][1]*F[2][2];
+        ADJF[1][1] = F[0][0]*F[2][2]-F[0][2]*F[2][0];
+        ADJF[1][2] = F[0][1]*F[2][0]-F[0][0]*F[2][1];
+        ADJF[2][0] = F[0][1]*F[1][2]-F[0][2]*F[1][1];
+        ADJF[2][1] = F[0][2]*F[1][0]-F[1][2]*F[0][0];
+        ADJF[2][2] = F[0][0]*F[1][1]-F[1][0]*F[0][1];
+    }
+}
+
+double DET(int SD, const std::vector<std::vector<double>>& F) {
+    if (SD == 1) {
+        return F[0][0];
+    } else if (SD == 2) {
+        return F[0][0]*F[1][1] - F[0][1]*F[1][0];
+    } else if (SD == 3) {
+        return F[0][0]*( F[1][1]*F[2][2]-F[2][1]*F[1][2] ) +
+               F[0][1]*( F[2][0]*F[1][2]-F[1][0]*F[2][2] ) +
+               F[0][2]*( F[1][0]*F[2][1]-F[2][0]*F[1][1] );
+    }
+    return 0.0;
+}
+
+void MAT_TRANS(const std::vector<std::vector<double>>& A, int N, int M,
+               std::vector<std::vector<double>>& AT) {
+    for (int j1 = 0; j1 < N; ++j1) {
+        for (int j2 = 0; j2 < M; ++j2) {
+            AT[j2][j1] = A[j1][j2];
+        }
+    }
+}
+
+void MATVEC_PRO(const std::vector<std::vector<double>>& A, int N, int M,
+                const std::vector<double>& B, std::vector<double>& C) {
+    std::fill(C.begin(), C.end(), 0.0);
+    for (int j = 0; j < N; ++j) {
+        for (int k = 0; k < M; ++k) {
+            C[j] += A[j][k] * B[k];
+        }
+    }
+}
+
+
 
 void BASIS(
     const int SD, const int OD, const int D1, const int D2, const int D3,
@@ -194,11 +298,11 @@ void BASIS(
 
 
 void BASIS_IN(
-    const int SD, const int OD, const int NEN ,const int NUMEL, const int IND, 
-    const int IB, const int D123, const int* DIM_CP, const int* DIM_KP,
-    const int* DIM_OP, const int* SPAN, const double* CWEI, double* DPHI_G, 
-    double* DERIV, double* TEMP, double* WP, const double* BSS_BASIS
-)
+    const int SD, const int OD, const int* DIM_CP, const int* DIM_KP,
+    const int* DIM_OP, const int NEN, const int NUMEL, const int IND,
+    const int IB, const int D123, const int* SPAN, const double* CWEI,
+    double* DPHI_G, double* DERIV, double* TEMP, double* WP,
+    const double* BSS_BASIS)
 {
     const int BSS_IND = IND * D123 + IB - 1;
     const int COLS = 2 * (DIM_OP[0] + 1) + 2 * (DIM_OP[1] + 1) + 2 * (DIM_OP[2] + 1);
@@ -238,20 +342,29 @@ void BASIS_IN(
                 BSS_BASIS[BSS_IND * COLS +(J1)] * BSS_BASIS[BSS_IND * COLS + (2 * (DIM_OP[0] + 1) + J2)] * BSS_BASIS[BSS_IND*COLS + (2*(DIM_OP[0]+1) + 2*(DIM_OP[1]+1) + (DIM_OP[2]+1) + J3)];
 
                 for (int j = 0; j <= SD; j++) {
-                    TEMP[IND * (SD + 1) + j] *= 
-                    CWEI[K1 * (DIM_CP[1] + 1) * (DIM_CP[2] + 1)+ K2 * (DIM_CP[2] + 1) + K3];
+                    TEMP[IND * (SD + 1) + j] *=
+                        CWEI[K1 * (DIM_CP[1] + 1) * (DIM_CP[2] + 1) +
+                             K2 * (DIM_CP[2] + 1) + K3];
                     WP[IND * (SD + 1) + j] += TEMP[IND * (SD + 1) + j];
                 }
-                DPHI_G[(((IND * D123) + (IB - 1)) * NEN + (no - 1)) * (SD + 1)] = TEMP[IND * (SD + 1)] / WP[IND * (SD + 1)];
+
+                int no_index = (J1 * (DIM_OP[1] + 1) + J2) * (DIM_OP[2] + 1) + J3;
+                DPHI_G[(((IND * D123) + (IB - 1)) * NEN + no_index) * (SD + 1) + 0] =
+                    TEMP[IND * (SD + 1) + 0] / WP[IND * (SD + 1) + 0];
                 for (int d = 1; d <= SD; d++) {
-                    DPHI_G[(((IND * D123)+(IB - 1)) * NEN + (no - 1)) * (SD + 1) + d] = (TEMP[IND * (SD + 1) + d] - WP[IND * (SD + 1) + d] * DPHI_G[(((IND * D123) + (IB - 1)) * NEN + (no - 1)) * (SD + 1)]) / WP[IND * (SD + 1)];
+                    DPHI_G[(((IND * D123) + (IB - 1)) * NEN + no_index) * (SD + 1) + d] =
+                        (TEMP[IND * (SD + 1) + d] -
+                         WP[IND * (SD + 1) + d] *
+                             DPHI_G[(((IND * D123) + (IB - 1)) * NEN + no_index) * (SD + 1) + 0]) /
+                        WP[IND * (SD + 1) + 0];
                 }
             }
         }
     }
     for (int no = 1; no <= SD; no++) {
         for (int t = 0; t < NEN; t++) {
-            DPHI_G[((IND * D123 * NEN) + ((IB - 1) * NEN) + t) * (SD + 1) + no] *= DERIV[IND * SD + (no - 1)];
+            DPHI_G[((IND * D123 * NEN) + ((IB - 1) * NEN) + t) * (SD + 1) + no] *=
+                DERIV[IND * SD + (no - 1)];
         }
     }
 }
